@@ -1,0 +1,244 @@
+
+##RNA-SEQ ANALYSIS
+
+##Trimmomatic 
+
+###PAline 
+
+trimmomatic PE -phred33 \
+-trimlog log1.txt ./pennsylvania/*_R1_001.fastq.gz ./pennsylvania/*_R2_001.fastq.gz \
+./pennsylvania/paired_pa**_1.fq ./pennsylvania/unpaired_pa**_1.fq \
+./pennsylvania/paired_pa**_2.fq ./pennsylvania/unpaired_pa**_2.fq \
+ILLUMINACLIP:./trimmomatic/adapters/TruSeq3-PE.fa:2:30:10 \
+LEADING:20 TRAILING:20 SLIDINGWINDOW:4:15 MINLEN:36;
+
+###FL line 
+
+trimmomatic PE -phred33 \
+-trimlog log1.txt ./florida/*_R1_001.fastq.gz ./florida/*_R2_001.fastq.gz \
+./florida/paired_fl**_1.fq ./florida/unpaired_fl**_1.fq \
+./florida/paired_fl**_2.fq ./florida/unpaired_fl**_2.fq \
+ILLUMINACLIP:./trimmomatic/adapters/TruSeq3-PE.fa:2:30:10 \
+LEADING:20 TRAILING:20 SLIDINGWINDOW:4:15 MINLEN:36;
+
+##Sequence Alignment 
+
+###PA line
+
+STAR --genomeDir STARgenome --runThreadN 2 --readFilesIn ./pennsylvania/paired_pa**_1.fq.gz ./pennsylvania/paired_pa**_2.fq.gz  \
+--readFilesCommand zcat --outFileNamePrefix HP** --outFilterMultimapNmax 1 \
+--outReadsUnmapped unmapped_HP** --outSAMtype BAM SortedByCoordinate
+
+
+###FL line 
+
+STAR --genomeDir STARgenome --runThreadN 2 --readFilesIn ./florida/paired_fl**_1.fq.gz ./florida/paired_fl**_2.fq.gz  \
+--readFilesCommand zcat --outFileNamePrefix LP** --outFilterMultimapNmax 1 \
+--outReadsUnmapped unmapped_LP** --outSAMtype BAM SortedByCoordinate
+
+##Featurecounts 
+
+featureCounts -p -t exon -g gene_id -a genes/genes.gtf -o raw_featurecountsDRpa.txt HPD1Aligned.sortedByCoord.out.bam HPD2Aligned.sortedByCoord.out.bam HPD3Aligned.sortedByCoord.out.bam HPR1Aligned.sortedByCoord.out.bam HPR2Aligned.sortedByCoord.out.bam HPR3Aligned.sortedByCoord.out.bam 
+
+featureCounts -p -t exon -g gene_id -a genes/genes.gtf -o raw_featurecountsDRfl.txt LPD1Aligned.sortedByCoord.out.bam LPD2Aligned.sortedByCoord.out.bam LPD3Aligned.sortedByCoord.out.bam LPR1Aligned.sortedByCoord.out.bam LPR2Aligned.sortedByCoord.out.bam LPR3Aligned.sortedByCoord.out.bam 
+
+featureCounts -p -t exon -g gene_id -a genes/genes.gtf -o raw_featurecountsDRCpa.txt HPD1Aligned.sortedByCoord.out.bam HPD2Aligned.sortedByCoord.out.bam HPD3Aligned.sortedByCoord.out.bam HPR1Aligned.sortedByCoord.out.bam HPR2Aligned.sortedByCoord.out.bam HPR3Aligned.sortedByCoord.out.bam HPC1Aligned.sortedByCoord.out.bam HPC2Aligned.sortedByCoord.out.bam HPC3Aligned.sortedByCoord.out.bam
+
+featureCounts -p -t exon -g gene_id -a genes/genes.gtf -o raw_featurecountsDRCfl.txt LPD1Aligned.sortedByCoord.out.bam LPD2Aligned.sortedByCoord.out.bam LPD3Aligned.sortedByCoord.out.bam LPR1Aligned.sortedByCoord.out.bam LPR2Aligned.sortedByCoord.out.bam LPR3Aligned.sortedByCoord.out.bam LPC1Aligned.sortedByCoord.out.bam LPC2Aligned.sortedByCoord.out.bam LPC3Aligned.sortedByCoord.out.bam
+
+
+##Differential Expression Analysis 
+
+##DRpa
+
+featurecounts <- read.delim("raw_featurecountsDRpa.txt", header = TRUE, skip = 1)
+column.from = which(colnames(featurecounts) == "Length") + 1
+column.end  = ncol(featurecounts)
+
+coldata = data.frame(Condition = c("Dpa", "Dpa", "Dpa", "Rpa", "Rpa", "Rpa"), stringsAsFactors = TRUE)
+
+
+dds <- 
+  DESeqDataSetFromMatrix(countData = featurecounts[, column.from:column.end],
+                         colData = coldata,
+                         design = ~Condition)
+rownames(dds) <- featurecounts$Geneid
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds)
+colData(dds)
+
+keep <- rowSums(counts(dds)) >= 50
+dds <- dds[keep,]
+
+dds <- DESeq(dds)
+
+resDRpa <- results(dds, c("Condition", "Dpa", "Rpa"))
+resDRpa
+mcols(resDRpa, use.names = TRUE)
+
+
+resDRpa$SYMBOL <- mapIds(org.Dm.eg.db, 
+                         keys=row.names(resDRpa),
+                         keytype="FLYBASE",
+                         column="SYMBOL",
+                         multiVals="first") 
+
+
+resDRpa <- as.data.frame(resDRpa)
+resDRpa <- rownames_to_column(resDRpa, var = "flybase")
+resDRpa
+
+
+resOrderedDRpa <- resDRpa[order(resDRpa$pvalue),]
+head(resOrderedDRpa)
+
+resOrderedDRpa <- as.data.frame(resOrderedDRpa)
+resOrderedDRpa
+write.csv(resOrderedDRpa, file = "resultsDRpafiltered50.csv")
+
+
+##DRfl
+
+featurecounts <- read.delim("raw_featurecountsDRfl.txt", header = TRUE, skip = 1)
+column.from = which(colnames(featurecounts) == "Length") + 1
+column.end  = ncol(featurecounts)
+
+coldata = data.frame(Condition = c("Dfl", "Dfl", "Dfl", "Rfl", "Rfl", "Rfl"), stringsAsFactors = TRUE)
+
+
+dds <- 
+  DESeqDataSetFromMatrix(countData = featurecounts[, column.from:column.end],
+                         colData = coldata,
+                         design = ~Condition)
+rownames(dds) <- featurecounts$Geneid
+dds <- dds[ rowSums(counts(dds)) > 1, ]
+nrow(dds)
+colData(dds)
+
+keep <- rowSums(counts(dds)) >= 50
+dds <- dds[keep,]
+
+dds <- DESeq(dds)
+
+resDRfl <- results(dds, c("Condition", "Dfl", "Rfl"))
+resDRfl
+mcols(resDRfl, use.names = TRUE)
+
+
+resDRpa$SYMBOL <- mapIds(org.Dm.eg.db, 
+                         keys=row.names(resDRfl),
+                         keytype="FLYBASE",
+                         column="SYMBOL",
+                         multiVals="first") 
+
+
+resDRfl <- as.data.frame(resDRfl)
+resDRfl <- rownames_to_column(resDRfl, var = "flybase")
+resDRfl
+
+
+resOrderedDRfl <- resDRfl[order(resDRfl$pvalue),]
+
+resOrderedDRfl <- as.data.frame(resOrderedDRfl)
+resOrderedDRfl
+write.csv(resOrderedDRfl, file = "resultsDRflfiltered50.csv")
+
+##DRCpa
+
+featurecountspa <- read.delim("raw_featurecountsDRCpa.txt", header = TRUE, skip = 1)
+column.from = which(colnames(featurecountspa) == "Length") + 1
+column.end  = ncol(featurecountspa)
+
+coldatapa = data.frame(Condition = c("Dpa", "Dpa", "Dpa", "Rpa", "Rpa", "Rpa", "Cpa", "Cpa", "Cpa"), stringsAsFactors = TRUE)
+
+ddspa <- 
+  DESeqDataSetFromMatrix(countData = featurecountspa[, column.from:column.end],
+                         colData = coldatapa,
+                         design = ~Condition)
+rownames(ddspa) <- featurecountspa$Geneid
+
+keep <- rowSums(counts(ddpa)) >= 50
+ddspa <- ddspa[keep,]
+
+ddspa <- DESeq(ddspa)
+
+##DRCfl
+
+featurecountsfl <- read.delim("raw_featurecountsDRCfl.txt", header = TRUE, skip = 1)
+column.from = which(colnames(featurecountsfl) == "Length") + 1
+column.end  = ncol(featurecountsfl)
+
+coldatafl = data.frame(Condition = c("Dfl", "Dfl", "Dfl", "Rfl", "Rfl", "Rfl", "Cfl", "Cfl", "Cfl"), stringsAsFactors = TRUE)
+
+ddsfl <- 
+  DESeqDataSetFromMatrix(countData = featurecountsfl[, column.from:column.end],
+                         colData = coldatafl,
+                         design = ~Condition)
+rownames(ddsfl) <- featurecountsfl$Geneid
+
+keep <- rowSums(counts(ddsfl)) >= 50
+ddsfl <- ddsfl[keep,]
+
+ddsfl <- DESeq(ddsfl)
+
+
+
+
+
+
+
+
+###GENETIC DIVERGENCE ANALYSIS 
+
+##ESTIMATING PI (nucleotide diversity) OF INBRED LINES 
+
+#Trimmomatic 
+
+##PA line 
+
+java -jar Trimmomatic-0.39/trimmomatic-0.39.jar PE 20061D-11-03_S0_L001_R1_001.fastq.gz 20061D-11-03_S0_L001_R2_001.fastq.gz HPinbred_forward_paired.fq.gz HPinbred_forward_unpaired.fq.gz HPinbred_reverse_paired.fq.gz HPinbred_reverse_unpaired.fq.gz ILLUMINACLIP:Trimmomatic-0.39/TruSeq3-PE.fastq:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36 
+
+##FL line 
+
+java -jar Trimmomatic-0.39/trimmomatic-0.39.jar PE 20061D-11-04_S0_L001_R1_001.fastq.gz 20061D-11-04_S0_L001_R2_001.fastq.gz LPinbred_forward_paired.fq.gz LPinbred_forward_unpaired.fq.gz LPinbred_reverse_paired.fq.gz LPinbred_reverse_unpaired.fq.gz ILLUMINACLIP:Trimmomatic-0.39/TruSeq3-PE.fastq:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36
+
+#BWA Alignment
+
+bwa mem -t 12 HPinbred_forward_paired.fq.gz HPinbred_reverse_paired.fq.gz > HPinbred.sam
+
+bwa mem -t 12 LPinbred_forward_paired.fq.gz LPinbred_reverse_paired.fq.gz > LPinbred.sam 
+
+#samtools sort 
+
+samtools sort -O bam -T HPinbred.sort -o HPinbred.sort.bam HPinbred.sam
+
+samtools sort -O bam -T LPinbred.sort -o LPinbred.sort.bam LPinbred.sam
+
+#samtools pileup 
+./samtools-0.1.16/samtools pileup HPinbred.sort.bam > HPinbred.pileup
+
+./samtools-0.1.16/samtools pileup LPinbred.sort.bam > LPinbred.pileup
+
+#estimating pi 
+perl ./popoolation_1.2.2/Variance-sliding.pl --input HPinbred.pileup --output HPinbred_site.pi --measure pi --fastq-type sanger --window-size 1 
+--step-size 1 --min-count 1 --min-coverage 4 --max-coverage 200 --min-qual 20 --pool-size 50 
+
+perl ./popoolation_1.2.2/Variance-sliding.pl --input LPinbred.pileup --output LPinbred_site.pi --measure pi --fastq-type sanger --window-size 1 
+--step-size 1 --min-count 1 --min-coverage 4 --max-coverage 200 --min-qual 20 --pool-size 50 
+
+
+##ESTIMATING Fst BETWEEN INBRED LINES 
+
+#samtools mpileup 
+
+samtools mpileup -B HPinbred.sorted.bam LPinbred.sort.bam > HPLP.mpileup
+
+#sync 
+
+perl ./popoolation2_1201/mpileup2sync.pl --fastq-type sanger --min-qual 20 --input HPLP.mpileup --output HPLP.sync
+
+#estimating fst
+
+perl ./popoolation2_1201/fst-sliding.pl --input HPLP.sync --output HPLP.fst --min-count 6 --min-coverage 50 --
+max-coverage 500 --min-covered-fraction 1 --window-size 1 --step-size 1 --pool-size 50
+
